@@ -28,7 +28,7 @@ type ServerConfig struct {
 	EnableNeighborsStatusRefresh   bool   `ini:"enable_neighbors_status_refresh"`
 	BirdwatcherV2                  bool   `ini:"enable_new_birdwatcher"`
 	EnablePprof                    bool   `ini:"enable_pprof"`
-	EnablePrometheus   bool   `ini:"enable_prometheus"`
+	EnablePrometheus               bool   `ini:"enable_prometheus"`
 }
 
 type HousekeepingConfig struct {
@@ -500,8 +500,8 @@ func getUiConfig(config *ini.File) (UiConfig, error) {
 
 	// Get neighbours table columns
 	neighboursColumns,
-		neighboursColumnsOrder,
-		err := getNeighboursColumns(config)
+	neighboursColumnsOrder,
+	err := getNeighboursColumns(config)
 	if err != nil {
 		return uiConfig, err
 	}
