@@ -33,3 +33,6 @@ etc/alice-lg/alice.conf
 .DS_Store
 
 *coverage*
+
+.idea
+
