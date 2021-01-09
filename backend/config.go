@@ -8,6 +8,7 @@ import (
 
 	"github.com/alice-lg/alice-lg/backend/sources"
 	"github.com/alice-lg/alice-lg/backend/sources/birdwatcher"
+	"github.com/alice-lg/alice-lg/backend/sources/birdwatcherV2"
 	"github.com/alice-lg/alice-lg/backend/sources/gobgp"
 
 	"github.com/go-ini/ini"
@@ -16,6 +17,7 @@ import (
 const SOURCE_UNKNOWN = 0
 const SOURCE_BIRDWATCHER = 1
 const SOURCE_GOBGP = 2
+const SOURCE_BIRDWATCHER_V2 = 3
 
 type ServerConfig struct {
 	Listen                         string `ini:"listen_http"`
@@ -24,6 +26,9 @@ type ServerConfig struct {
 	RoutesStoreRefreshInterval     int    `ini:"routes_store_refresh_interval"`
 	Asn                            int    `ini:"asn"`
 	EnableNeighborsStatusRefresh   bool   `ini:"enable_neighbors_status_refresh"`
+	BirdwatcherV2                  bool   `ini:"enable_new_birdwatcher"`
+	EnablePprof                    bool   `ini:"enable_pprof"`
+	EnablePrometheus   bool   `ini:"enable_prometheus"`
 }
 
 type HousekeepingConfig struct {
@@ -150,7 +155,10 @@ func isSourceBase(section *ini.Section) bool {
 }
 
 // Get backend configuration type
-func getBackendType(section *ini.Section) int {
+func getBackendType(section *ini.Section, birdwatcherV2 bool) int {
+	if birdwatcherV2 {
+		return SOURCE_BIRDWATCHER_V2
+	}
 	name := section.Name()
 	if strings.HasSuffix(name, "birdwatcher") {
 		return SOURCE_BIRDWATCHER
@@ -557,7 +565,7 @@ func getUiConfig(config *ini.File) (UiConfig, error) {
 	return uiConfig, nil
 }
 
-func getSources(config *ini.File) ([]*SourceConfig, error) {
+func getSources(config *ini.File, birdwatcherV2 bool) ([]*SourceConfig, error) {
 	sources := []*SourceConfig{}
 
 	order := 0
@@ -585,7 +593,7 @@ func getSources(config *ini.File) ([]*SourceConfig, error) {
 
 		// Configure backend
 		backendConfig := sourceConfigSections[0]
-		backendType := getBackendType(backendConfig)
+		backendType := getBackendType(backendConfig, birdwatcherV2)
 
 		if backendType == SOURCE_UNKNOWN {
 			return sources, fmt.Errorf("%s has an unsupported backend", section.Name())
@@ -609,6 +617,36 @@ func getSources(config *ini.File) ([]*SourceConfig, error) {
 		// Set backend
 		switch backendType {
 		case SOURCE_BIRDWATCHER:
+			sourceType := backendConfig.Key("type").MustString("")
+			peerTablePrefix := backendConfig.Key("peer_table_prefix").MustString("T")
+			pipeProtocolPrefix := backendConfig.Key("pipe_protocol_prefix").MustString("M")
+
+			if sourceType != "single_table" &&
+				sourceType != "multi_table" {
+				log.Fatal("Configuration error (birdwatcher source) unknown birdwatcher type:", sourceType)
+			}
+
+			log.Println("Adding birdwatcher source of type", sourceType,
+				"with peer_table_prefix", peerTablePrefix,
+				"and pipe_protocol_prefix", pipeProtocolPrefix)
+
+			c := birdwatcher.Config{
+				Id:   config.Id,
+				Name: config.Name,
+
+				Timezone:        "UTC",
+				ServerTime:      "2006-01-02T15:04:05.999999999Z07:00",
+				ServerTimeShort: "2006-01-02",
+				ServerTimeExt:   "Mon, 02 Jan 2006 15:04:05 -0700",
+
+				Type:               sourceType,
+				PeerTablePrefix:    peerTablePrefix,
+				PipeProtocolPrefix: pipeProtocolPrefix,
+			}
+
+			backendConfig.MapTo(&c)
+			config.Birdwatcher = c
+		case SOURCE_BIRDWATCHER_V2:
 			sourceType := backendConfig.Key("type").MustString("")
 			peerTablePrefix := backendConfig.Key("peer_table_prefix").MustString("T")
 			pipeProtocolPrefix := backendConfig.Key("pipe_protocol_prefix").MustString("M")
@@ -699,7 +737,7 @@ func loadConfig(file string) (*Config, error) {
 	parsedConfig.Section("housekeeping").MapTo(&housekeeping)
 
 	// Get all sources
-	sources, err := getSources(parsedConfig)
+	sources, err := getSources(parsedConfig, server.BirdwatcherV2)
 	if err != nil {
 		return nil, err
 	}
@@ -731,6 +769,8 @@ func (self *SourceConfig) getInstance() sources.Source {
 	switch self.Type {
 	case SOURCE_BIRDWATCHER:
 		instance = birdwatcher.NewBirdwatcher(self.Birdwatcher)
+	case SOURCE_BIRDWATCHER_V2:
+		instance = birdwatcherV2.NewBirdwatcher(self.Birdwatcher)
 	case SOURCE_GOBGP:
 		instance = gobgp.NewGoBGP(self.GoBGP)
 	}

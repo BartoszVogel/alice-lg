@@ -23,7 +23,7 @@ ADD client .
 RUN DISABLE_LOGGING=1 NODE_ENV=production /usr/local/bin/gulp
 
 # Build the backend
-FROM golang:1.12 AS backend
+FROM golang:1.15 AS backend
 
 # Install dependencies
 WORKDIR /src/alice-lg
@@ -38,6 +38,7 @@ COPY --from=frontend /src/alice-lg/client/build client/build
 # Build backend
 WORKDIR /src/alice-lg
 ADD VERSION .
+COPY etc etc
 
 WORKDIR /src/alice-lg/backend
 ADD backend .
@@ -48,7 +49,10 @@ RUN make alpine
 
 FROM alpine:latest
 COPY --from=backend /src/alice-lg/backend/alice-lg-linux-amd64 /usr/bin/alice-lg
+COPY --from=backend /src/alice-lg/etc/alice-lg/alice.docker.conf /etc/alice-lg/alice.conf
 RUN ls -lsha /usr/bin/alice-lg
+#ENV GODEBUG=madvdontneed=1,gctrace=1,scavenge=1,scavtrace=1
+ENV GODEBUG=madvdontneed=1,gctrace=1
 
-EXPOSE 7340:7340
+EXPOSE 6060:6060
 CMD ["/usr/bin/alice-lg"]

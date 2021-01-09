@@ -28,7 +28,8 @@ DIST/
 
 var/
 
-etc/alice-lg/alice.conf
+/etc/alice-lg/alice.conf
+/etc/alice-lg/alice.docker.conf
 
 .DS_Store
 

@@ -9,16 +9,16 @@ type Route struct {
 	Id          string `json:"id"`
 	NeighbourId string `json:"neighbour_id"`
 
-	Network   string        `json:"network"`
-	Interface string        `json:"interface"`
-	Gateway   string        `json:"gateway"`
-	Metric    int           `json:"metric"`
-	Bgp       BgpInfo       `json:"bgp"`
-	Age       time.Duration `json:"age"`
-	Type      []string      `json:"type"` // [BGP, unicast, univ]
-	Primary   bool          `json:"primary"`
-
-	Details Details `json:"details"`
+	Network    string        `json:"network"`
+	Interface  string        `json:"interface"`
+	Gateway    string        `json:"gateway"`
+	Metric     int           `json:"metric"`
+	Bgp        BgpInfo       `json:"bgp"`
+	Age        time.Duration `json:"age"`
+	Type       []string      `json:"type"` // [BGP, unicast, univ]
+	Primary    bool          `json:"primary"`
+	LearntFrom string
+	Details    Details `json:"details"`
 }
 
 // Implement Filterable interface for routes

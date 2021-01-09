@@ -64,6 +64,19 @@ func main() {
 		log.Fatal(err)
 	}
 
+	if AliceConfig.Server.EnablePprof == true {
+		err = pprofEndpoints(router)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+	if AliceConfig.Server.EnablePrometheus == true {
+		err = prometheusMetrics(router)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
 	// Start http server
 	log.Fatal(http.ListenAndServe(AliceConfig.Server.Listen, router))
 }
