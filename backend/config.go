@@ -29,6 +29,7 @@ type ServerConfig struct {
 	BirdwatcherV2                  bool   `ini:"enable_new_birdwatcher"`
 	EnablePprof                    bool   `ini:"enable_pprof"`
 	EnablePrometheus               bool   `ini:"enable_prometheus"`
+	NumOfParallelWorkers           int    `ini:"number_of_parallel_workers"`
 }
 
 type HousekeepingConfig struct {
@@ -730,7 +731,7 @@ func loadConfig(file string) (*Config, error) {
 	}
 
 	// Map sections
-	server := ServerConfig{}
+	server := ServerConfig{ NumOfParallelWorkers: 1}
 	parsedConfig.Section("server").MapTo(&server)
 
 	housekeeping := HousekeepingConfig{}

@@ -31,3 +31,11 @@ func stateToString(state int) string {
 	}
 	return "INVALID"
 }
+
+type updateStatus string
+
+const(
+	Success updateStatus = "Success"
+	Failure = "Failure"
+	Skipped = "Skipped"
+)

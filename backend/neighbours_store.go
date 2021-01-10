@@ -21,6 +21,7 @@ type NeighboursStore struct {
 	refreshInterval       time.Duration
 	refreshNeighborStatus bool
 	lastRefresh           time.Time
+	numOfParallelWorkers  int
 
 	sync.RWMutex
 }
@@ -52,12 +53,18 @@ func NewNeighboursStore(config *Config) *NeighboursStore {
 
 	refreshNeighborStatus := config.Server.EnableNeighborsStatusRefresh
 
+	numOfParallelWorkers := 1
+	if config.Server.NumOfParallelWorkers > 0 {
+		numOfParallelWorkers = config.Server.NumOfParallelWorkers
+	}
+
 	store := &NeighboursStore{
 		neighboursMap:         neighboursMap,
 		statusMap:             statusMap,
 		configMap:             configMap,
 		refreshInterval:       refreshInterval,
 		refreshNeighborStatus: refreshNeighborStatus,
+		numOfParallelWorkers:  numOfParallelWorkers,
 	}
 	return store
 }
@@ -101,69 +108,95 @@ func (self *NeighboursStore) update() {
 	successCount := 0
 	errorCount := 0
 	t0 := time.Now()
-	for sourceId, _ := range self.neighboursMap {
-		// Get current state
-		if self.statusMap[sourceId].State == STATE_UPDATING {
-			continue // nothing to do here. really.
-		}
 
-		// Start updating
-		self.Lock()
-		self.statusMap[sourceId] = StoreStatus{
-			State: STATE_UPDATING,
-		}
-		self.Unlock()
+	numNeighbours := len(self.neighboursMap)
+	routes := make(chan string, numNeighbours)
+	results := make(chan updateStatus, numNeighbours)
 
-		sourceConfig := self.configMap[sourceId]
-		source := sourceConfig.getInstance()
-
-		neighboursRes, err := source.Neighbours()
-		if err != nil {
-			log.Println(
-				"Refreshing the neighbors store failed for:",
-				sourceConfig.Name, "(", sourceConfig.Id, ")",
-				"with:", err,
-				"- NEXT STATE: ERROR",
-			)
-			// That's sad.
-			self.Lock()
-			self.statusMap[sourceId] = StoreStatus{
-				State:       STATE_ERROR,
-				LastError:   err,
-				LastRefresh: time.Now(),
-			}
-			self.Unlock()
-
-			errorCount++
-			continue
-		}
-
-		neighbours := neighboursRes.Neighbours
-
-		// Update data
-		// Make neighbours index
-		index := make(NeighboursIndex)
-		for _, neighbour := range neighbours {
-			index[neighbour.Id] = neighbour
-		}
-
-		self.Lock()
-		self.neighboursMap[sourceId] = index
-		// Update state
-		self.statusMap[sourceId] = StoreStatus{
-			LastRefresh: time.Now(),
-			State:       STATE_READY,
-		}
-		self.lastRefresh = time.Now().UTC()
-		self.Unlock()
-		successCount++
+	for w := 0; w < self.numOfParallelWorkers; w++ {
+		go self.updateNeighbour(routes, results)
 	}
+
+	for sourceId, _ := range self.neighboursMap {
+		routes <- sourceId
+	}
+
+	close(routes)
+
+	for a := 1; a <= numNeighbours; a++ {
+		switch <-results {
+		case Success:
+			successCount++
+		case Failure:
+			errorCount++
+		}
+	}
+
+	close(results)
 
 	refreshDuration := time.Since(t0)
 	log.Println(
-		"Refreshed neighbors store for", successCount, "of", successCount+errorCount,
+		"Refreshed neighbors store for", successCount - errorCount, "of", numNeighbours,
 		"sources with", errorCount, "error(s) in", refreshDuration,
 	)
+}
+
+func (self *NeighboursStore) updateNeighbour(source <-chan string, results chan<- updateStatus) {
+	for sourceId := range source {
+		// Get current state
+		if self.statusMap[sourceId].State == STATE_UPDATING {
+			results <- Skipped // nothing to do here. really.
+		} else {
+			// Start updating
+			self.Lock()
+			self.statusMap[sourceId] = StoreStatus{
+				State: STATE_UPDATING,
+			}
+			self.Unlock()
+
+			sourceConfig := self.configMap[sourceId]
+			source := sourceConfig.getInstance()
+
+			neighboursRes, err := source.Neighbours()
+			if err != nil {
+				log.Println(
+					"Refreshing the neighbors store failed for:",
+					sourceConfig.Name, "(", sourceConfig.Id, ")",
+					"with:", err,
+					"- NEXT STATE: ERROR",
+				)
+				// That's sad.
+				self.Lock()
+				self.statusMap[sourceId] = StoreStatus{
+					State:       STATE_ERROR,
+					LastError:   err,
+					LastRefresh: time.Now(),
+				}
+				self.Unlock()
+				results <- Failure
+			} else {
+				neighbours := neighboursRes.Neighbours
+
+				// Update data
+				// Make neighbours index
+				index := make(NeighboursIndex)
+				for _, neighbour := range neighbours {
+					index[neighbour.Id] = neighbour
+				}
+
+				self.Lock()
+				self.neighboursMap[sourceId] = index
+				// Update state
+				self.statusMap[sourceId] = StoreStatus{
+					LastRefresh: time.Now(),
+					State:       STATE_READY,
+				}
+				self.lastRefresh = time.Now().UTC()
+				self.Unlock()
+				results <- Success
+			}
+		}
+	}
 }
 
 func (self *NeighboursStore) GetNeighborsAt(sourceId string) api.Neighbours {

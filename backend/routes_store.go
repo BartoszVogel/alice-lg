@@ -14,8 +14,9 @@ type RoutesStore struct {
 	statusMap map[string]StoreStatus
 	configMap map[string]*SourceConfig
 
-	refreshInterval time.Duration
-	lastRefresh     time.Time
+	refreshInterval      time.Duration
+	lastRefresh          time.Time
+	numOfParallelWorkers int
 
 	sync.RWMutex
 }
@@ -45,11 +46,17 @@ func NewRoutesStore(config *Config) *RoutesStore {
 		refreshInterval = time.Duration(5) * time.Minute
 	}
 
+	numOfParallelWorkers := 1
+	if config.Server.NumOfParallelWorkers > 0 {
+		numOfParallelWorkers = config.Server.NumOfParallelWorkers
+	}
+
 	store := &RoutesStore{
-		routesMap:       routesMap,
-		statusMap:       statusMap,
-		configMap:       configMap,
-		refreshInterval: refreshInterval,
+		routesMap:            routesMap,
+		statusMap:            statusMap,
+		configMap:            configMap,
+		refreshInterval:      refreshInterval,
+		numOfParallelWorkers: numOfParallelWorkers,
 	}
 	return store
 }
@@ -81,63 +88,85 @@ func (self *RoutesStore) update() {
 	errorCount := 0
 	t0 := time.Now()
 
+	numRoutes := len(self.routesMap)
+	results := make(chan updateStatus, numRoutes)
+	routes := make(chan string, numRoutes)
+
+	for w := 0; w < self.numOfParallelWorkers; w++ {
+		go self.updateStore(routes, results)
+	}
+
 	for sourceId, _ := range self.routesMap {
+		routes <- sourceId
+	}
+	close(routes)
+
+	for a := 1; a <= numRoutes; a++ {
+		switch <-results {
+		case Success:
+			successCount++
+		case Failure:
+			errorCount++
+		}
+	}
+	close(results)
+
+	refreshDuration := time.Since(t0)
+	log.Println(
+		"Refreshed routes store for", successCount-errorCount, "of", numRoutes,
+		"sources with", errorCount, "error(s) in", refreshDuration,
+	)
+}
+
+func (self *RoutesStore) updateStore(source <-chan string, results chan<- updateStatus) {
+	for sourceId := range source {
 		sourceConfig := self.configMap[sourceId]
 		source := sourceConfig.getInstance()
 
 		// Get current update state
 		if self.statusMap[sourceId].State == STATE_UPDATING {
-			continue // nothing to do here
-		}
-
-		// Set update state
-		self.Lock()
-		self.statusMap[sourceId] = StoreStatus{
-			State: STATE_UPDATING,
-		}
-		self.Unlock()
-
-		routes, err := source.AllRoutes()
-		if err != nil {
-			log.Println(
-				"Refreshing the routes store failed for:", sourceConfig.Name,
-				"(", sourceConfig.Id, ")",
-				"with:", err,
-				"- NEXT STATE: ERROR",
-			)
-
+			results <- Skipped // nothing to do here
+		} else {
+			// Set update state
 			self.Lock()
 			self.statusMap[sourceId] = StoreStatus{
-				State:       STATE_ERROR,
-				LastError:   err,
-				LastRefresh: time.Now(),
+				State: STATE_UPDATING,
 			}
 			self.Unlock()
+			routes, err := source.AllRoutes()
+			if err != nil {
+				log.Println(
+					"Refreshing the routes store failed for:", sourceConfig.Name,
+					"(", sourceConfig.Id, ")",
+					"with:", err,
+					"- NEXT STATE: ERROR",
+				)
 
-			errorCount++
-			continue
+				self.Lock()
+				self.statusMap[sourceId] = StoreStatus{
+					State:       STATE_ERROR,
+					LastError:   err,
+					LastRefresh: time.Now(),
+				}
+				self.Unlock()
+
+				results <- Failure
+			} else {
+				self.Lock()
+				// Update data
+				self.routesMap[sourceId] = routes
+				// Update state
+				self.statusMap[sourceId] = StoreStatus{
+					LastRefresh: time.Now(),
+					State:       STATE_READY,
+				}
+				self.lastRefresh = time.Now().UTC()
+				self.Unlock()
+
+				results <- Success
+			}
 		}
-
-		self.Lock()
-		// Update data
-		self.routesMap[sourceId] = routes
-		// Update state
-		self.statusMap[sourceId] = StoreStatus{
-			LastRefresh: time.Now(),
-			State:       STATE_READY,
-		}
-		self.lastRefresh = time.Now().UTC()
-		self.Unlock()
-
-		successCount++
 	}
-
-	refreshDuration := time.Since(t0)
-	log.Println(
-		"Refreshed routes store for", successCount, "of", successCount+errorCount,
-		"sources with", errorCount, "error(s) in", refreshDuration,
-	)
-
 }
 
 // Calculate store insights

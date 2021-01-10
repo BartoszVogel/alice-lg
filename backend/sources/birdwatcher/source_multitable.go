@@ -2,6 +2,7 @@ package birdwatcher
 
 import (
 	"github.com/alice-lg/alice-lg/backend/api"
+	"time"
 
 	"strings"
 
@@ -259,6 +260,7 @@ func (self *MultiTableBirdwatcher) fetchRequiredRoutes(neighborId string) (*api.
 
 // Get neighbors from protocols
 func (self *MultiTableBirdwatcher) Neighbours() (*api.NeighboursResponse, error) {
+	defer timeTrack(time.Now(), fmt.Sprintf("Fetching neighbours %s", self.config.Id))
 	// Check if we hit the cache
 	response := self.neighborsCache.Get()
 	if response != nil {
@@ -475,6 +477,7 @@ func (self *MultiTableBirdwatcher) RoutesNotExported(neighborId string) (*api.Ro
 }
 
 func (self *MultiTableBirdwatcher) AllRoutes() (*api.RoutesResponse, error) {
+	defer timeTrack(time.Now(), fmt.Sprintf("Fetching routes %s", self.config.Id))
 	// Query birdwatcher
 	_, birdProtocols, err := self.fetchProtocols()
 	if err != nil {

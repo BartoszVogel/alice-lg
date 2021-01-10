@@ -36,7 +36,6 @@ func main() {
 
 	// Setup local routes store
 	AliceRoutesStore = NewRoutesStore(AliceConfig)
-
 	if AliceConfig.Server.EnablePrefixLookup == true {
 		AliceRoutesStore.Start()
 	}

@@ -1,8 +1,10 @@
 package birdwatcherV2
 
 import (
+	"log"
 	"strings"
 	"sync"
+	"time"
 )
 
 /*
@@ -34,4 +36,10 @@ func (l *LockMap) Unlock(key string) {
 func isProtocolUp(protocol string) bool {
 	protocol = strings.ToLower(protocol)
 	return protocol == "up"
+}
+
+func timeTrack(start time.Time, name string) {
+	log.Printf("%s started %s", name, start)
+	elapsed := time.Since(start)
+	log.Printf("%s took %s", name, elapsed)
 }

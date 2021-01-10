@@ -7,6 +7,7 @@ import (
 	"log"
 	"sort"
 	"strings"
+	"time"
 )
 
 type MultiTableBirdwatcher struct {
@@ -47,6 +48,7 @@ func (mt MultiTableBirdwatcher) ExpireCaches() int {
 }
 
 func (mt MultiTableBirdwatcher) Neighbours() (*api.NeighboursResponse, error) {
+	defer timeTrack(time.Now(), fmt.Sprintf("Fetching neighbours %s", mt.config.Id))
 	// Check if we hit the cache
 	response := mt.neighborsCache.Get()
 	if response != nil {
@@ -283,6 +285,7 @@ func (mt MultiTableBirdwatcher) RoutesNotExported(neighbourId string) (*api.Rout
 }
 
 func (mt *MultiTableBirdwatcher) AllRoutes() (*api.RoutesResponse, error) {
+	defer timeTrack(time.Now(), fmt.Sprintf("Fetching routes %s", mt.config.Id))
 	response := &api.RoutesResponse{}
 
 	// Query birdwatcher

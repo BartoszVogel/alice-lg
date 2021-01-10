@@ -2,8 +2,10 @@ package birdwatcher
 
 import (
 	"fmt"
+	"log"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/alice-lg/alice-lg/backend/api"
 )
@@ -56,4 +58,9 @@ func (self *LockMap) Unlock(key string) {
 func isProtocolUp(protocol string) bool {
 	protocol = strings.ToLower(protocol)
 	return protocol == "up"
+}
+
+func timeTrack(start time.Time, name string) {
+	elapsed := time.Since(start)
+	log.Printf("%s took %s", name, elapsed)
 }
