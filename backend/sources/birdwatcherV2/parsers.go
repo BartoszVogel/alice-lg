@@ -89,7 +89,7 @@ func parseRouteBgpInfo(data Bgp) api.BgpInfo {
 
 // Extract extended communtieis
 func parseExtBgpCommunities(data []api.ExtCommunity) []api.ExtCommunity {
-	var communities []api.ExtCommunity
+	var communities = make([]api.ExtCommunity, 0)
 	for _, cdata := range data {
 		if len(cdata) != 3 {
 			log.Println("Ignoring malformed ext community:", cdata)

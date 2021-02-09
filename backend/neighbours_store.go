@@ -117,7 +117,7 @@ func (self *NeighboursStore) update() {
 		go self.updateNeighbour(routes, results)
 	}
 
-	for sourceId, _ := range self.neighboursMap {
+	for sourceId := range self.neighboursMap {
 		routes <- sourceId
 	}
 

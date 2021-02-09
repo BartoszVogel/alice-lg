@@ -96,7 +96,7 @@ func (self *RoutesStore) update() {
 		go self.updateStore(routes, results)
 	}
 
-	for sourceId, _ := range self.routesMap {
+	for sourceId := range self.routesMap {
 		routes <- sourceId
 	}
 	close(routes)
